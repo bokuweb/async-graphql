@@ -503,8 +503,13 @@ impl<'a, T> ContextBase<'a, T> {
             let condition_input = self.resolve_input_value(condition_input)?;
 
             if include
-                != <bool as InputType>::parse(Some(condition_input))
-                    .map_err(|e| e.into_server_error().at(pos))?
+                != <bool as InputType>::parse(Some(condition_input)).map_err(|e| {
+                    let mut err = e.into_server_error().at(pos);
+                    if let Some(path) = &self.path_node {
+                        err = err.path(path.to_path_segments());
+                    }
+                    err
+                })?
             {
                 return Ok(true);
             }
@@ -530,15 +535,11 @@ impl<'a> ContextBase<'a, &'a Positioned<SelectionSet>> {
 }
 
 impl<'a, T> ContextBase<'a, &'a Positioned<T>> {
-    pub(crate) fn add_input_value_error<Q>(&self, err: InputValueError<Q>) {
-        let mut server_err = ServerError::new(self.message).at(self.item.pos);
-        if let Some(path) = &self.path_node {
-            server_err = server_err.path(path.to_path_segments());
-        }
-        self.query_env.errors.lock().unwrap().push(server_err);
+    pub(crate) fn add_server_error<Q>(&self, err: ServerError) {
+        self.query_env.errors.lock().unwrap().push(err);
     }
 
-    pub(crate) fn add_error(&self, err: Error) {
+    pub(crate) fn add_field_error(&self, err: Error) {
         let mut server_err = ServerError::new(err.message).at(self.item.pos);
         server_err.extensions = err.extensions;
         if let Some(path) = &self.path_node {
@@ -565,7 +566,13 @@ impl<'a> ContextBase<'a, &'a Positioned<Field>> {
             Some(value) => (value.pos, Some(self.resolve_input_value(value)?)),
             None => (Pos::default(), None),
         };
-        InputType::parse(value).map_err(|e| e.into_server_error().at(pos))
+        InputType::parse(value).map_err(|e| {
+            let mut err = e.into_server_error().at(pos);
+            if let Some(path) = &self.path_node {
+                err = err.path(path.to_path_segments());
+            }
+            err
+        })
     }
 
     /// Creates a uniform interface to inspect the forthcoming selections.

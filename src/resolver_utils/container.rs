@@ -47,7 +47,7 @@ pub trait ContainerType: OutputType {
 
 #[async_trait::async_trait]
 impl<T: ContainerType> ContainerType for &T {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
+    async fn resolve_field(&self, ctx: &Context<'_>) -> Value {
         T::resolve_field(*self, ctx).await
     }
 
@@ -60,7 +60,7 @@ impl<T: ContainerType> ContainerType for &T {
 pub async fn resolve_container<'a, T: ContainerType + ?Sized>(
     ctx: &ContextSelectionSet<'a>,
     root: &'a T,
-) -> ServerResult<Value> {
+) -> Value {
     resolve_container_inner(ctx, root, true).await
 }
 
@@ -102,16 +102,16 @@ async fn resolve_container_inner<'a, T: ContainerType + ?Sized>(
     ctx: &ContextSelectionSet<'a>,
     root: &'a T,
     parallel: bool,
-) -> ServerResult<Value> {
+) -> Value {
     let mut fields = Fields(Vec::new());
-    fields.add_set(ctx, root)?;
+    fields.add_set(ctx, root);
 
     let res = if parallel {
-        futures_util::future::try_join_all(fields.0).await?
+        futures_util::future::join_all(fields.0).await?
     } else {
         let mut results = Vec::with_capacity(fields.0.len());
         for field in fields.0 {
-            results.push(field.await?);
+            results.push(field.await);
         }
         results
     };
@@ -120,10 +120,10 @@ async fn resolve_container_inner<'a, T: ContainerType + ?Sized>(
     for (name, value) in res {
         insert_value(&mut map, name, value);
     }
-    Ok(Value::Object(map))
+    Value::Object(map)
 }
 
-type BoxFieldFuture<'a> = Pin<Box<dyn Future<Output = ServerResult<(Name, Value)>> + 'a + Send>>;
+type BoxFieldFuture<'a> = Pin<Box<dyn Future<Output = (Name, Value)> + 'a + Send>>;
 
 /// A set of fields on an container that are being selected.
 pub struct Fields<'a>(Vec<BoxFieldFuture<'a>>);
@@ -134,10 +134,10 @@ impl<'a> Fields<'a> {
         &mut self,
         ctx: &ContextSelectionSet<'a>,
         root: &'a T,
-    ) -> ServerResult<()> {
+    ) {
         for selection in &ctx.item.node.items {
             if let Err(err) = ctx.is_skip(&selection.node.directives()) {
-                ctx.add_input_value_error(err)
+                ctx.add_server_error(err);
                 continue;
             }
 
@@ -149,9 +149,9 @@ impl<'a> Fields<'a> {
                         let field_name = ctx_field.item.node.response_key().node.clone();
                         let typename = root.introspection_type_name().into_owned();
 
-                        self.0.push(Box::pin(async move {
-                            Ok((field_name, Value::String(typename)))
-                        }));
+                        self.0.push(Box::pin(
+                            async move { (field_name, Value::String(typename)) },
+                        ));
                         continue;
                     }
 
@@ -172,50 +172,32 @@ impl<'a> Fields<'a> {
                             let field_name = ctx_field.item.node.response_key().node.clone();
                             let extensions = &ctx.query_env.extensions;
 
-                            if extensions.is_empty() {
-                                match root.resolve_field(&ctx_field).await {
-                                    Ok(value) => Ok((field_name, value.unwrap_or_default())),
-                                    Err(e) => {
-                                        Err(e.path(PathSegment::Field(field_name.to_string())))
-                                    }
-                                }
+                            let value = if extensions.is_empty() {
+                                root.resolve_field(&ctx_field).await
                             } else {
                                 let type_name = T::type_name();
-                                let resolve_info = ResolveInfo {
-                                    path_node: ctx_field.path_node.as_ref().unwrap(),
-                                    parent_type: &type_name,
-                                    return_type: match ctx_field
-                                        .schema_env
-                                        .registry
-                                        .types
-                                        .get(type_name.as_ref())
-                                        .and_then(|ty| {
-                                            ty.field_by_name(field.node.name.node.as_str())
-                                        })
-                                        .map(|field| &field.ty)
-                                    {
-                                        Some(ty) => &ty,
-                                        None => {
-                                            return Err(ServerError::new(format!(
-                                                r#"Cannot query field "{}" on type "{}"."#,
-                                                field_name, type_name
-                                            ))
-                                            .at(ctx_field.item.pos)
-                                            .path(PathSegment::Field(field_name.to_string())));
-                                        }
-                                    },
-                                };
-
-                                let resolve_fut = async { root.resolve_field(&ctx_field).await };
-                                futures_util::pin_mut!(resolve_fut);
-                                let res = extensions.resolve(resolve_info, &mut resolve_fut).await;
-                                match res {
-                                    Ok(value) => Ok((field_name, value.unwrap_or_default())),
-                                    Err(e) => {
-                                        Err(e.path(PathSegment::Field(field_name.to_string())))
-                                    }
+                                let return_type = ctx_field
+                                    .schema_env
+                                    .registry
+                                    .types
+                                    .get(type_name.as_ref())
+                                    .and_then(|ty| ty.field_by_name(field.node.name.node.as_str()))
+                                    .map(|field| &field.ty);
+                                if let Some(return_type) = return_type {
+                                    let resolve_info = ResolveInfo {
+                                        path_node: ctx_field.path_node.as_ref().unwrap(),
+                                        parent_type: &type_name,
+                                        return_type,
+                                    };
+                                    let resolve_fut =
+                                        async { root.resolve_field(&ctx_field).await };
+                                    futures_util::pin_mut!(resolve_fut);
+                                    extensions.resolve(resolve_info, &mut resolve_fut).await
+                                } else {
+                                    Value::Null
                                 }
-                            }
+                            };
+                            (field_name, value)
                         }
                     }));
                 }
@@ -225,20 +207,14 @@ impl<'a> Fields<'a> {
                         Selection::FragmentSpread(spread) => {
                             let fragment =
                                 ctx.query_env.fragments.get(&spread.node.fragment_name.node);
-                            let fragment = match fragment {
-                                Some(fragment) => fragment,
-                                None => {
-                                    return Err(ServerError::new(format!(
-                                        r#"Unknown fragment "{}"."#,
-                                        spread.node.fragment_name.node
-                                    ))
-                                    .at(spread.pos));
-                                }
-                            };
-                            (
-                                Some(&fragment.node.type_condition),
-                                &fragment.node.selection_set,
-                            )
+                            if let Some(fragment) = fragment {
+                                (
+                                    Some(&fragment.node.type_condition),
+                                    &fragment.node.selection_set,
+                                )
+                            } else {
+                                continue;
+                            }
                         }
                         Selection::InlineFragment(fragment) => (
                             fragment.node.type_condition.as_ref(),
@@ -263,11 +239,10 @@ impl<'a> Fields<'a> {
                         root.collect_all_fields(&ctx.with_selection_set(selection_set), self)?;
                     } else if type_condition.map_or(true, |condition| T::type_name() == condition) {
                         // The fragment applies to an interface type.
-                        self.add_set(&ctx.with_selection_set(selection_set), root)?;
+                        self.add_set(&ctx.with_selection_set(selection_set), root);
                     }
                 }
             }
         }
-        Ok(())
     }
 }

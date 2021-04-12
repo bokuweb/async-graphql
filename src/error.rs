@@ -150,6 +150,11 @@ impl<T: InputType> InputValueError<T> {
             InputValueError::new(self.message)
         }
     }
+
+    /// Convert the error into a server error.
+    pub fn into_server_error(self) -> ServerError {
+        ServerError::new(self.message)
+    }
 }
 
 impl<T: InputType, E: Display> From<E> for InputValueError<T> {
@@ -177,6 +182,17 @@ impl Error {
         Self {
             message: message.into(),
             extensions: None,
+        }
+    }
+
+    /// Convert the error to a server error.
+    #[must_use]
+    pub fn into_server_error(self) -> ServerError {
+        ServerError {
+            message: self.message,
+            locations: Vec::new(),
+            path: Vec::new(),
+            extensions: self.extensions,
         }
     }
 }

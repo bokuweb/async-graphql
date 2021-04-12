@@ -272,11 +272,7 @@ pub struct NextResolve<'a> {
 
 impl<'a> NextResolve<'a> {
     /// Call the [Extension::resolve] function of next extension.
-    pub async fn run(
-        self,
-        ctx: &ExtensionContext<'_>,
-        info: ResolveInfo<'_>,
-    ) -> ServerResult<Option<Value>> {
+    pub async fn run(self, ctx: &ExtensionContext<'_>, info: ResolveInfo<'_>) -> Value {
         if let Some((first, next)) = self.chain.split_first() {
             first
                 .resolve(
@@ -353,7 +349,7 @@ pub trait Extension: Sync + Send + 'static {
         ctx: &ExtensionContext<'_>,
         info: ResolveInfo<'_>,
         next: NextResolve<'_>,
-    ) -> ServerResult<Option<Value>> {
+    ) -> Value {
         next.run(ctx, info).await
     }
 }
@@ -463,11 +459,7 @@ impl Extensions {
         next.run(&self.create_context()).await
     }
 
-    pub async fn resolve(
-        &self,
-        info: ResolveInfo<'_>,
-        resolve_fut: ResolveFut<'_>,
-    ) -> ServerResult<Option<Value>> {
+    pub async fn resolve(&self, info: ResolveInfo<'_>, resolve_fut: ResolveFut<'_>) -> Value {
         let next = NextResolve {
             chain: &self.extensions,
             resolve_fut,

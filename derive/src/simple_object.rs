@@ -200,10 +200,10 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
             #[#crate_name::async_trait::async_trait]
 
             impl #impl_generics #crate_name::resolver_utils::ContainerType for #ident #ty_generics #where_clause {
-                async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+                async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::Value {
                     #(#resolvers)*
                     #complex_resolver
-                    ::std::result::Result::Ok(::std::option::Option::None)
+                    #crate_name::Value::Null
                 }
             }
 
@@ -240,9 +240,9 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
                     })
                 }
 
-                async fn __internal_resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> where Self: #crate_name::ContainerType {
+                async fn __internal_resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::Value where Self: #crate_name::ContainerType {
                     #(#resolvers)*
-                    ::std::result::Result::Ok(::std::option::Option::None)
+                    #crate_name::Value::Null
                 }
             }
         });
@@ -267,7 +267,7 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
                 #[allow(clippy::all, clippy::pedantic)]
                 #[#crate_name::async_trait::async_trait]
                 impl #crate_name::resolver_utils::ContainerType for #concrete_type {
-                    async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+                    async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::Value {
                         self.__internal_resolve_field(ctx).await
                     }
                 }
@@ -275,7 +275,7 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
                 #[allow(clippy::all, clippy::pedantic)]
                 #[#crate_name::async_trait::async_trait]
                 impl #crate_name::OutputType for #concrete_type {
-                    async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::ServerResult<#crate_name::Value> {
+                    async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::Value {
                         #crate_name::resolver_utils::resolve_container(ctx, self).await
                     }
                 }
