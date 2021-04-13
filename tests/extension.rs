@@ -206,11 +206,11 @@ pub async fn test_extension_call_order() {
             ctx: &ExtensionContext<'_>,
             info: ResolveInfo<'_>,
             next: NextResolve<'_>,
-        ) -> ServerResult<Option<ConstValue>> {
+        ) -> ConstValue {
             self.calls.lock().await.push("resolve_start");
-            let res = next.run(ctx, info).await;
+            let value = next.run(ctx, info).await;
             self.calls.lock().await.push("resolve_end");
-            res
+            value
         }
     }
 

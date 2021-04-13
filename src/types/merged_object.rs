@@ -63,11 +63,18 @@ where
     A: ObjectType,
     B: ObjectType,
 {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
-        match self.0.resolve_field(ctx).await {
-            Ok(Some(value)) => Ok(Some(value)),
-            Ok(None) => self.1.resolve_field(ctx).await,
-            Err(err) => Err(err),
+    async fn resolve_field(&self, ctx: &Context<'_>) -> Value {
+        if ctx
+            .schema_env
+            .registry
+            .types
+            .get(&*A::type_name())
+            .and_then(|ty| ty.field_by_name(&ctx.item.node.name.node))
+            .is_some()
+        {
+            self.0.resolve_field(ctx).await
+        } else {
+            self.1.resolve_field(ctx).await
         }
     }
 
@@ -90,11 +97,7 @@ where
     A: ObjectType,
     B: ObjectType,
 {
-    async fn resolve(
-        &self,
-        ctx: &ContextSelectionSet<'_>,
-        _field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
+    async fn resolve(&self, ctx: &ContextSelectionSet<'_>, _field: &Positioned<Field>) -> Value {
         resolve_container(ctx, self).await
     }
 }

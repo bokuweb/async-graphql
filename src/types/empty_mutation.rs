@@ -3,8 +3,7 @@ use std::borrow::Cow;
 use crate::parser::types::Field;
 use crate::resolver_utils::ContainerType;
 use crate::{
-    registry, Context, ContextSelectionSet, ObjectType, OutputType, Positioned, ServerError,
-    ServerResult, Type, Value,
+    registry, Context, ContextSelectionSet, ObjectType, OutputType, Positioned, Type, Value,
 };
 
 /// Empty mutation
@@ -55,19 +54,16 @@ impl ContainerType for EmptyMutation {
         true
     }
 
-    async fn resolve_field(&self, _ctx: &Context<'_>) -> ServerResult<Option<Value>> {
-        unreachable!()
+    async fn resolve_field(&self, _ctx: &Context<'_>) -> Value {
+        Value::Null
     }
 }
 
 #[async_trait::async_trait]
 impl OutputType for EmptyMutation {
-    async fn resolve(
-        &self,
-        _ctx: &ContextSelectionSet<'_>,
-        field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
-        Err(ServerError::new("Schema is not configured for mutations.").at(field.pos))
+    async fn resolve(&self, ctx: &ContextSelectionSet<'_>, _field: &Positioned<Field>) -> Value {
+        ctx.add_field_error("Schema is not configured for mutations.");
+        Value::Null
     }
 }
 

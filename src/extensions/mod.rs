@@ -114,7 +114,7 @@ type ValidationFut<'a> =
 
 type ExecuteFut<'a> = &'a mut (dyn Future<Output = Response> + Send + Unpin);
 
-type ResolveFut<'a> = &'a mut (dyn Future<Output = ServerResult<Option<Value>>> + Send + Unpin);
+type ResolveFut<'a> = &'a mut (dyn Future<Output = Value> + Send + Unpin);
 
 /// The remainder of a extension chain for request.
 pub struct NextRequest<'a> {

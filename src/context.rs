@@ -18,8 +18,8 @@ use crate::parser::types::{
 };
 use crate::schema::SchemaEnv;
 use crate::{
-    Error, InputType, InputValueError, Lookahead, Name, PathSegment, Pos, Positioned, Result,
-    ServerError, ServerResult, UploadValue, Value,
+    Error, InputType, Lookahead, Name, PathSegment, Pos, Positioned, Result, ServerError,
+    ServerResult, UploadValue, Value,
 };
 
 /// Schema/Context data.
@@ -535,11 +535,14 @@ impl<'a> ContextBase<'a, &'a Positioned<SelectionSet>> {
 }
 
 impl<'a, T> ContextBase<'a, &'a Positioned<T>> {
-    pub(crate) fn add_server_error<Q>(&self, err: ServerError) {
+    #[doc(hidden)]
+    pub fn add_server_error(&self, err: ServerError) {
         self.query_env.errors.lock().unwrap().push(err);
     }
 
-    pub(crate) fn add_field_error(&self, err: Error) {
+    #[doc(hidden)]
+    pub fn add_field_error(&self, err: impl Into<Error>) {
+        let err = err.into();
         let mut server_err = ServerError::new(err.message).at(self.item.pos);
         server_err.extensions = err.extensions;
         if let Some(path) = &self.path_node {

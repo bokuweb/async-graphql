@@ -8,7 +8,7 @@ use serde::{Serialize, Serializer};
 use crate::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextResolve, ResolveInfo,
 };
-use crate::{value, Response, ServerResult, Value};
+use crate::{value, Response, Value};
 
 struct ResolveState {
     path: Vec<String>,
@@ -98,7 +98,7 @@ impl Extension for ApolloTracingExtension {
         ctx: &ExtensionContext<'_>,
         info: ResolveInfo<'_>,
         next: NextResolve<'_>,
-    ) -> ServerResult<Option<Value>> {
+    ) -> Value {
         let path = info.path_node.to_string_vec();
         let field_name = info.path_node.field_name().to_string();
         let parent_type = info.parent_type.to_string();
@@ -108,7 +108,7 @@ impl Extension for ApolloTracingExtension {
             .num_nanoseconds()
             .unwrap();
 
-        let res = next.run(ctx, info).await;
+        let value = next.run(ctx, info).await;
         let end_time = Utc::now();
 
         self.inner.lock().await.resolves.push(ResolveState {
@@ -120,6 +120,6 @@ impl Extension for ApolloTracingExtension {
             end_time,
             start_offset,
         });
-        res
+        value
     }
 }

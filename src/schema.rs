@@ -464,7 +464,7 @@ where
             query_env: &env,
         };
 
-        let res = match &env.operation.node.ty {
+        let value = match &env.operation.node.ty {
             OperationType::Query => resolve_container(&ctx, &self.query).await,
             OperationType::Mutation => resolve_container_serial(&ctx, &self.mutation).await,
             OperationType::Subscription => {
@@ -473,14 +473,10 @@ where
                 )]);
             }
         };
-
-        match res {
-            Ok(data) => {
-                let resp = Response::new(data);
-                resp.http_headers(std::mem::take(&mut *env.http_headers.lock().unwrap()))
-            }
-            Err(err) => Response::from_errors(vec![err]),
-        }
+        let mut resp = Response::new(value);
+        resp.errors = std::mem::take(&mut *env.errors.lock().unwrap());
+        resp = resp.http_headers(std::mem::take(&mut *env.http_headers.lock().unwrap()));
+        resp
     }
 
     /// Execute a GraphQL query.

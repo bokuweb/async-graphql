@@ -98,7 +98,7 @@ impl<T: OutputType + Sync, E: Into<Error> + Send + Sync + Clone> OutputType for 
         match self {
             Ok(value) => value.resolve(ctx, field).await,
             Err(err) => {
-                ctx.add_error(err.into());
+                ctx.add_field_error(err.clone());
                 Value::Null
             }
         }

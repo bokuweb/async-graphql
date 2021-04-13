@@ -6,8 +6,8 @@ use crate::model::{__Schema, __Type};
 use crate::parser::types::Field;
 use crate::resolver_utils::{resolve_container, ContainerType};
 use crate::{
-    registry, Any, Context, ContextSelectionSet, ObjectType, OutputType, Positioned, ServerError,
-    ServerResult, SimpleObject, Type, Value,
+    registry, Any, Context, ContextSelectionSet, ObjectType, OutputType, Positioned, SimpleObject,
+    Type, Value,
 };
 
 /// Federation service
@@ -91,7 +91,7 @@ impl<T: Type> Type for QueryRoot<T> {
 
 #[async_trait::async_trait]
 impl<T: ObjectType> ContainerType for QueryRoot<T> {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
+    async fn resolve_field(&self, ctx: &Context<'_>) -> Value {
         if !ctx.schema_env.registry.disable_introspection && !ctx.query_env.disable_introspection {
             if ctx.item.node.name.node == "__schema" {
                 let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
@@ -102,39 +102,52 @@ impl<T: ObjectType> ContainerType for QueryRoot<T> {
                     &ctx_obj,
                     ctx.item,
                 )
-                .await
-                .map(Some);
+                .await;
             } else if ctx.item.node.name.node == "__type" {
-                let type_name: String = ctx.param_value("name", None)?;
+                let type_name: String = match ctx.param_value("name", None) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        ctx.add_server_error(err);
+                        return Value::Null;
+                    }
+                };
                 let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
-                return OutputType::resolve(
-                    &ctx.schema_env
-                        .registry
-                        .types
-                        .get(&type_name)
-                        .filter(|ty| ty.is_visible(ctx))
-                        .map(|ty| __Type::new_simple(&ctx.schema_env.registry, ty)),
-                    &ctx_obj,
-                    ctx.item,
-                )
-                .await
-                .map(Some);
+                let ty = ctx
+                    .schema_env
+                    .registry
+                    .types
+                    .get(&type_name)
+                    .filter(|ty| ty.is_visible(ctx))
+                    .map(|ty| __Type::new_simple(&ctx.schema_env.registry, ty));
+                return OutputType::resolve(&ty, &ctx_obj, ctx.item).await;
             }
         }
 
         if ctx.schema_env.registry.enable_federation || ctx.schema_env.registry.has_entities() {
             if ctx.item.node.name.node == "_entities" {
-                let representations: Vec<Any> = ctx.param_value("representations", None)?;
-                let res = futures_util::future::try_join_all(representations.iter().map(
-                    |item| async move {
-                        self.inner
-                            .find_entity(ctx, &item.0)
-                            .await?
-                            .ok_or_else(|| ServerError::new("Entity not found.").at(ctx.item.pos))
-                    },
-                ))
-                .await?;
-                return Ok(Some(Value::List(res)));
+                let representations: Vec<Any> = match ctx.param_value("representations", None) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        ctx.add_server_error(err);
+                        return Value::Null;
+                    }
+                };
+                let res =
+                    futures_util::future::join_all(representations.iter().map(|item| async move {
+                        match self.inner.find_entity(ctx, &item.0).await {
+                            Ok(Some(value)) => value,
+                            Ok(None) => {
+                                ctx.add_field_error("Entity not found.");
+                                Value::Null
+                            }
+                            Err(err) => {
+                                ctx.add_field_error(err);
+                                Value::Null
+                            }
+                        }
+                    }))
+                    .await;
+                return Value::List(res);
             } else if ctx.item.node.name.node == "_service" {
                 let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
                 return OutputType::resolve(
@@ -144,8 +157,7 @@ impl<T: ObjectType> ContainerType for QueryRoot<T> {
                     &ctx_obj,
                     ctx.item,
                 )
-                .await
-                .map(Some);
+                .await;
             }
         }
 
@@ -155,11 +167,7 @@ impl<T: ObjectType> ContainerType for QueryRoot<T> {
 
 #[async_trait::async_trait]
 impl<T: ObjectType> OutputType for QueryRoot<T> {
-    async fn resolve(
-        &self,
-        ctx: &ContextSelectionSet<'_>,
-        _field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
+    async fn resolve(&self, ctx: &ContextSelectionSet<'_>, _field: &Positioned<Field>) -> Value {
         resolve_container(ctx, self).await
     }
 }

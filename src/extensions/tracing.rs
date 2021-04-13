@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use futures_util::stream::BoxStream;
-use futures_util::TryFutureExt;
 use tracing_futures::Instrument;
 use tracinglib::{span, Level};
 
@@ -127,7 +126,7 @@ impl Extension for TracingExtension {
         ctx: &ExtensionContext<'_>,
         info: ResolveInfo<'_>,
         next: NextResolve<'_>,
-    ) -> ServerResult<Option<Value>> {
+    ) -> Value {
         let span = span!(
             target: "async_graphql::graphql",
             Level::INFO,
@@ -136,12 +135,6 @@ impl Extension for TracingExtension {
             parent_type = %info.parent_type,
             return_type = %info.return_type,
         );
-        next.run(ctx, info)
-            .instrument(span)
-            .map_err(|err| {
-                tracinglib::error!(target: "async_graphql::graphql", error = %err.message);
-                err
-            })
-            .await
+        next.run(ctx, info).instrument(span).await
     }
 }

@@ -414,7 +414,13 @@ pub fn generate(
                         #[allow(non_snake_case)]
                         let #param_getter_name = || -> #crate_name::ServerResult<#ty> { ctx.param_value(#name, #default) };
                         #[allow(non_snake_case)]
-                        let #ident: #ty = #param_getter_name()?;
+                        let #ident: #ty = match #param_getter_name() {
+                            ::std::result::Result::Ok(value) => value,
+                            ::std::result::Result::Err(err) => {
+                                ctx.add_server_error(err);
+                                return #crate_name::Value::Null;
+                            }
+                        };
                     });
                 }
 
@@ -463,7 +469,7 @@ pub fn generate(
                             quote! {
                                 Some(#crate_name::registry::ComplexityType::Fn(|__ctx, __variables_definition, __field, child_complexity| {
                                     #(#parse_args)*
-                                    Ok(#expr)
+                                    ::std::result::Result::Ok(#expr)
                                 }))
                             }
                         }
@@ -513,7 +519,13 @@ pub fn generate(
                 let resolve_obj = quote! {
                     {
                         let res = self.#field_ident(ctx, #(#use_params),*).await;
-                        res.map_err(|err| ::std::convert::Into::<#crate_name::Error>::into(err).into_server_error().at(ctx.item.pos))?
+                        match res.map_err(|err| ::std::convert::Into::<#crate_name::Error>::into(err)) {
+                            ::std::result::Result::Ok(value) => value,
+                            ::std::result::Result::Err(err) => {
+                                ctx.add_field_error(err);
+                                return #crate_name::Value::Null;
+                            }
+                        }
                     }
                 };
 
@@ -524,8 +536,10 @@ pub fn generate(
 
                 let guard = guard.map(|guard| {
                     quote! {
-                        #guard.check(ctx).await
-                            .map_err(|err| err.into_server_error().at(ctx.item.pos))?;
+                        if let Err(err) = #guard.check(ctx).await {
+                            ctx.add_field_error(err);
+                            return #crate_name::Value::Null;
+                        }
                     }
                 });
 
@@ -536,7 +550,7 @@ pub fn generate(
                         #guard
                         let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
                         let res = #resolve_obj;
-                        return #crate_name::OutputType::resolve(&res, &ctx_obj, ctx.item).await.map(::std::option::Option::Some);
+                        return #crate_name::OutputType::resolve(&res, &ctx_obj, ctx.item).await;
                     }
                 });
             }
@@ -605,9 +619,9 @@ pub fn generate(
         #[allow(unused_braces, unused_variables, unused_parens, unused_mut)]
         #[#crate_name::async_trait::async_trait]
         impl#generics #crate_name::resolver_utils::ContainerType for #shadow_type<#generics_params> #where_clause {
-            async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+            async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::Value {
                 #(#resolvers)*
-                ::std::result::Result::Ok(::std::option::Option::None)
+                #crate_name::Value::Null
             }
 
             async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
@@ -631,7 +645,7 @@ pub fn generate(
         #[allow(clippy::all, clippy::pedantic)]
         #[#crate_name::async_trait::async_trait]
         impl #generics #crate_name::OutputType for #shadow_type<#generics_params> #where_clause {
-            async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::ServerResult<#crate_name::Value> {
+            async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::Value {
                 #crate_name::resolver_utils::resolve_container(ctx, self).await
             }
         }

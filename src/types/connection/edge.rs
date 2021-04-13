@@ -7,8 +7,7 @@ use crate::parser::types::Field;
 use crate::resolver_utils::{resolve_container, ContainerType};
 use crate::types::connection::CursorType;
 use crate::{
-    registry, Context, ContextSelectionSet, ObjectType, OutputType, Positioned, ServerResult, Type,
-    Value,
+    registry, Context, ContextSelectionSet, ObjectType, OutputType, Positioned, Type, Value,
 };
 
 /// The edge type output by the data source
@@ -119,14 +118,12 @@ where
     T: OutputType,
     E: ObjectType,
 {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
+    async fn resolve_field(&self, ctx: &Context<'_>) -> Value {
         if ctx.item.node.name.node == "node" {
             let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
-            return OutputType::resolve(&self.node, &ctx_obj, ctx.item)
-                .await
-                .map(Some);
+            return OutputType::resolve(&self.node, &ctx_obj, ctx.item).await;
         } else if ctx.item.node.name.node == "cursor" {
-            return Ok(Some(Value::String(self.cursor.encode_cursor())));
+            return Value::String(self.cursor.encode_cursor());
         }
 
         self.additional_fields.resolve_field(ctx).await
@@ -140,11 +137,7 @@ where
     T: OutputType,
     E: ObjectType,
 {
-    async fn resolve(
-        &self,
-        ctx: &ContextSelectionSet<'_>,
-        _field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
+    async fn resolve(&self, ctx: &ContextSelectionSet<'_>, _field: &Positioned<Field>) -> Value {
         resolve_container(ctx, self).await
     }
 }

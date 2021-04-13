@@ -17,7 +17,6 @@ const KEY_SOURCE: Key = Key::from_static_str("graphql.source");
 const KEY_VARIABLES: Key = Key::from_static_str("graphql.variables");
 const KEY_PARENT_TYPE: Key = Key::from_static_str("graphql.parentType");
 const KEY_RETURN_TYPE: Key = Key::from_static_str("graphql.returnType");
-const KEY_ERROR: Key = Key::from_static_str("graphql.error");
 const KEY_COMPLEXITY: Key = Key::from_static_str("graphql.complexity");
 const KEY_DEPTH: Key = Key::from_static_str("graphql.depth");
 
@@ -150,7 +149,7 @@ impl<T: Tracer + Send + Sync> Extension for OpenTelemetryExtension<T> {
         ctx: &ExtensionContext<'_>,
         info: ResolveInfo<'_>,
         next: NextResolve<'_>,
-    ) -> ServerResult<Option<Value>> {
+    ) -> Value {
         let attributes = vec![
             KEY_PARENT_TYPE.string(info.parent_type.to_string()),
             KEY_RETURN_TYPE.string(info.return_type.to_string()),
@@ -163,13 +162,6 @@ impl<T: Tracer + Send + Sync> Extension for OpenTelemetryExtension<T> {
             .start(&*self.tracer);
         next.run(ctx, info)
             .with_context(OpenTelemetryContext::current_with_span(span))
-            .map_err(|err| {
-                let current_cx = OpenTelemetryContext::current();
-                current_cx
-                    .span()
-                    .add_event("error".to_string(), vec![KEY_ERROR.string(err.to_string())]);
-                err
-            })
             .await
     }
 }

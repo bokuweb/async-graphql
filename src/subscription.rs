@@ -3,7 +3,7 @@ use std::pin::Pin;
 use futures_util::stream::{Stream, StreamExt};
 
 use crate::parser::types::{Selection, TypeCondition};
-use crate::{Context, ContextSelectionSet, PathSegment, Response, ServerError, ServerResult, Type};
+use crate::{Context, ContextSelectionSet, Response, ServerError, ServerResult, Type};
 
 /// A GraphQL subscription object
 pub trait SubscriptionType: Type + Send + Sync {
@@ -43,9 +43,11 @@ pub(crate) fn collect_subscription_streams<'a, T: SubscriptionType + 'static>(
                             yield resp;
                         }
                     } else {
-                        let err = ServerError::new(format!(r#"Cannot query field "{}" on type "{}"."#, field_name, T::type_name()))
-                            .at(ctx.item.pos)
-                            .path(PathSegment::Field(field_name.to_string()));
+                        let mut err = ServerError::new(format!(r#"Cannot query field "{}" on type "{}"."#, field_name, T::type_name()))
+                            .at(ctx.item.pos);
+                        if let Some(path) = &ctx.path_node {
+                            err = err.path(path.to_path_segments());
+                        }
                         yield Response::from_errors(vec![err]);
                     }
                 }

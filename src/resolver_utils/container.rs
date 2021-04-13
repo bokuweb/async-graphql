@@ -5,9 +5,7 @@ use std::pin::Pin;
 use crate::extensions::ResolveInfo;
 use crate::parser::types::Selection;
 use crate::registry::MetaType;
-use crate::{
-    Context, ContextSelectionSet, Name, OutputType, PathSegment, ServerError, ServerResult, Value,
-};
+use crate::{Context, ContextSelectionSet, Name, OutputType, ServerResult, Value};
 
 /// Represents a GraphQL container object.
 ///
@@ -68,7 +66,7 @@ pub async fn resolve_container<'a, T: ContainerType + ?Sized>(
 pub async fn resolve_container_serial<'a, T: ContainerType + ?Sized>(
     ctx: &ContextSelectionSet<'a>,
     root: &'a T,
-) -> ServerResult<Value> {
+) -> Value {
     resolve_container_inner(ctx, root, false).await
 }
 
@@ -107,7 +105,7 @@ async fn resolve_container_inner<'a, T: ContainerType + ?Sized>(
     fields.add_set(ctx, root);
 
     let res = if parallel {
-        futures_util::future::join_all(fields.0).await?
+        futures_util::future::join_all(fields.0).await
     } else {
         let mut results = Vec::with_capacity(fields.0.len());
         for field in fields.0 {
@@ -236,7 +234,7 @@ impl<'a> Fields<'a> {
                                 .map_or(false, |interfaces| interfaces.contains(condition))
                     });
                     if applies_concrete_object {
-                        root.collect_all_fields(&ctx.with_selection_set(selection_set), self)?;
+                        root.collect_all_fields(&ctx.with_selection_set(selection_set), self);
                     } else if type_condition.map_or(true, |condition| T::type_name() == condition) {
                         // The fragment applies to an interface type.
                         self.add_set(&ctx.with_selection_set(selection_set), root);

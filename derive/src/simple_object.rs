@@ -123,9 +123,15 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
         resolvers.push(quote! {
             if ctx.item.node.name.node == #field_name {
                 #guard
-                let res = self.#ident(ctx).await.map_err(|err| err.into_server_error().at(ctx.item.pos))?;
+                let value = match self.#ident(ctx).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        ctx.add_field_error(err);
+                        return #crate_name::Value::Null;
+                    }
+                };
                 let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
-                return #crate_name::OutputType::resolve(&res, &ctx_obj, ctx.item).await.map(::std::option::Option::Some);
+                return #crate_name::OutputType::resolve(&value, &ctx_obj, ctx.item).await;
             }
         });
     }
@@ -159,9 +165,7 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
             fields.extend(<Self as #crate_name::ComplexObject>::fields(registry));
         };
         complex_resolver = quote! {
-            if let Some(value) = <Self as #crate_name::ComplexObject>::resolve_field(self, ctx).await? {
-                return Ok(Some(value));
-            }
+            <Self as #crate_name::ComplexObject>::resolve_field(self, ctx).await
         };
     }
 
@@ -210,7 +214,7 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
             #[allow(clippy::all, clippy::pedantic)]
             #[#crate_name::async_trait::async_trait]
             impl #impl_generics #crate_name::OutputType for #ident #ty_generics #where_clause {
-                async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::ServerResult<#crate_name::Value> {
+                async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::Value {
                     #crate_name::resolver_utils::resolve_container(ctx, self).await
                 }
             }
