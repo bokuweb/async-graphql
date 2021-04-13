@@ -315,12 +315,11 @@ pub fn generate(
             });
 
             let create_field_stream = quote! {
-                self.#ident(ctx, #(#use_params),*)
-                    .await
+                self.#ident(ctx, #(#use_params),*).await
                     .map_err(|err| {
                         ::std::convert::Into::<#crate_name::Error>::into(err).into_server_error()
                             .at(ctx.item.pos)
-                            .path(#crate_name::PathSegment::Field(::std::borrow::ToOwned::to_owned(&*field_name)))
+                            .path(ctx.path_node.to_path_segments())
                     })?
             };
 

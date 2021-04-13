@@ -219,7 +219,7 @@ pub fn generate(
                             if let (#(#key_pat),*) = (#(#key_getter),*) {
                                 #(#requires_getter)*
                                 let ctx_obj = ctx.with_selection_set(&ctx.item.node.selection_set);
-                                return #crate_name::OutputType::resolve(&#do_find, &ctx_obj, ctx.item).await.map(::std::option::Option::Some);
+                                return ::std::option::Option::Some(#crate_name::OutputType::resolve(&#do_find, &ctx_obj, ctx.item).await);
                             }
                         }
                     },
@@ -536,7 +536,7 @@ pub fn generate(
 
                 let guard = guard.map(|guard| {
                     quote! {
-                        if let Err(err) = #guard.check(ctx).await {
+                        if let Err(err) = (#guard).check(ctx).await {
                             ctx.add_field_error(err);
                             return #crate_name::Value::Null;
                         }

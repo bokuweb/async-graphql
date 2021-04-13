@@ -100,7 +100,14 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
             Some(meta) => generate_guards(&crate_name, &meta)?,
             None => None,
         };
-        let guard = guard.map(|guard| quote! { #guard.check(ctx).await.map_err(|err| err.into_server_error().at(ctx.item.pos))?; });
+        let guard = guard.map(|guard| {
+            quote! {
+                if let Err(err) = (#guard).check(ctx).await {
+                    ctx.add_field_error(err);
+                    return #crate_name::Value::Null;
+                }
+            }
+        });
 
         getters.push(if !field.owned {
             quote! {
@@ -124,8 +131,8 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
             if ctx.item.node.name.node == #field_name {
                 #guard
                 let value = match self.#ident(ctx).await {
-                    Ok(value) => value,
-                    Err(err) => {
+                    ::std::result::Result::Ok(value) => value,
+                    ::std::result::Result::Err(err) => {
                         ctx.add_field_error(err);
                         return #crate_name::Value::Null;
                     }
